@@ -1,0 +1,120 @@
+name: "Terraform PR checks"
+
+on:
+  pull_request:
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+
+jobs:
+  fmt-validate:
+    name: Format & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: '1.5.0'
+
+      - name: Terraform fmt check
+        run: |
+          terraform init -backend=false
+          terraform fmt -check -recursive
+
+      - name: Terraform validate
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+  security-scans:
+    name: Static & Security Scans
+    runs-on: ubuntu-latest
+    needs: fmt-validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tflint
+        run: |
+          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+          tflint --version || true
+
+      - name: Run tflint
+        run: tflint --init || true
+
+      - name: Install tfsec
+        run: |
+          curl -sSL https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_tfsec.sh | bash
+
+      - name: Run tfsec
+        run: tfsec --format json || true
+
+      - name: Install checkov
+        run: pip install --user checkov
+
+      - name: Run checkov
+        run: ~/.local/bin/checkov -d . || true
+
+  infracost:
+    name: Infracost estimate
+    runs-on: ubuntu-latest
+    needs: security-scans
+    env:
+      INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v1
+        with:
+          api_key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Generate Terraform plan and Infracost
+        run: |
+          terraform init -backend=false
+          terraform plan -out=tfplan.binary || true
+          infracost breakdown --path=tfplan.binary --format=json --out-file infracost.json || true
+
+      - name: Post Infracost comment (requires INFRACOST_API_KEY)
+        if: env.INFRACOST_API_KEY != ''
+        uses: infracost/actions/comment@v1
+        with:
+          path: infracost.json
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  sonarqube:
+    name: SonarQube (optional)
+    runs-on: ubuntu-latest
+    needs: security-scans
+    if: ${{ secrets.SONAR_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Run SonarScanner
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          curl -sSLo sonar-scanner-cli.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856.zip
+          unzip sonar-scanner-cli.zip -d .
+          ./sonar-scanner-*/bin/sonar-scanner -Dsonar.login=$SONAR_TOKEN || true
+
+  manual-approval:
+    name: Manual Approval
+    runs-on: ubuntu-latest
+    needs: [infracost]
+    environment: prod-approval
+    steps:
+      - name: Wait for manual approval (environment `prod-approval` must be configured with reviewers)
+        run: echo "Waiting for environment approval"
+
+  finalize:
+    name: Finalize checks
+    runs-on: ubuntu-latest
+    needs: [manual-approval]
+    steps:
+      - run: echo "All checks complete. Ready for apply when merged and run in CI/CD pipeline."

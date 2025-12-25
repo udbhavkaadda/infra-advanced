@@ -1,42 +1,100 @@
-data "azurerm_client_config" "current" {}
-
-resource "azurerm_key_vault" "kv" {
-  for_each                    = var.key_vaults
-  name                        = each.value.name
-  location                    = each.value.location
-  resource_group_name         = each.value.resource_group_name
-  tenant_id                   = lookup(each.value, "tenant_id", data.azurerm_client_config.current.tenant_id)
-  sku_name                    = lookup(each.value, "sku_name", "standard")
-  purge_protection_enabled    = lookup(each.value, "purge_protection", true)
-  soft_delete_retention_days  = lookup(each.value, "soft_delete_days", 7)
-
-  dynamic "access_policy" {
-    for_each = lookup(each.value, "access_policies", {})
-    content {
-      tenant_id = lookup(access_policy.value, "tenant_id", data.azurerm_client_config.current.tenant_id)
-      object_id = access_policy.value.object_id
-
-      key_permissions     = lookup(access_policy.value, "key_permissions", [])
-      secret_permissions  = lookup(access_policy.value, "secret_permissions", [])
-      storage_permissions = lookup(access_policy.value, "storage_permissions", [])
+rgs = {
+  dev = {
+    name     = "rg-dev"
+    location = "eastus"
+    tags = {
+      env = "dev"
     }
   }
+}
 
-  # Optional network ACLs
-  dynamic "network_acls" {
-    for_each = lookup(each.value, "network_acls", length(lookup(each.value, "network_acls", null)) == 0 ? [] : [lookup(each.value, "network_acls")])
-    content {
-      bypass         = lookup(network_acls.value, "bypass", "AzureServices")
-      default_action = lookup(network_acls.value, "default_action", "Deny")
-      ip_rules       = lookup(network_acls.value, "ip_rules", [])
-      virtual_network_subnet_ids = lookup(network_acls.value, "virtual_network_subnet_ids", [])
+storage_accounts = {
+  appstore = {
+    name                     = "appsa12345"
+    resource_group_name      = "rg-dev"
+    location                 = "eastus"
+    account_tier             = "Standard"
+    account_replication_type = "LRS"
+    tags = {
+      env = "dev"
     }
   }
-
-  tags = lookup(each.value, "tags", {})
 }
 
-output "key_vault_ids" {
-  value = { for k, v in azurerm_key_vault.kv : k => v.id }
+networks = {
+  dev = {
+    name          = "vnet-dev"
+    resource_group_name   = "rg-dev"
+    location      = "eastus"
+    address_space = ["10.0.0.0/16"]
+
+    subnets = {
+      frontend = {
+        name             = "frontend-subnet"
+        address_prefixes = ["10.0.1.0/24"]
+      }
+
+      backend = {
+        name             = "backend-subnet"
+        address_prefixes = ["10.0.2.0/24"]
+      }
+    }
+
+    tags = {
+      env = "dev"
+    }
+  }
 }
 
+vms = {
+  frontend = {
+    name  = "vm-frontend"
+    rg_key = "dev"
+    subnet_key = "frontend"
+    admin_username_secret = "vm-frontend-user"
+    admin_password_secret = "vm-frontend-pass"
+  }
+
+  backend = {
+    name  = "vm-backend"
+    rg_key = "dev"
+    subnet_key = "backend"
+    admin_username_secret = "vm-backend-user"
+    admin_password_secret = "vm-backend-pass"
+  }
+}
+
+
+public_ips = {
+  frontend = {
+    name   = "pip-frontend"
+    rg_key = "dev"
+    location = "eastus"
+    tags = { env = "dev" }
+  }
+}
+
+key_vaults = {
+  app = {
+    name   = "kvdevapp1234"
+    rg_key = "dev"
+    location = "eastus"
+  }
+}
+sql_servers = {
+  dev = {
+    name   = "sqlsrv-dev-app"
+    rg_key = "dev"
+    location = "eastus"
+    admin_username_secret = "sql-admin-user"
+    admin_password_secret = "sql-admin-pass"
+  }
+}
+
+sql_databases = {
+  appdb = {
+    name      = "todoappdb"
+    server_key = "dev"
+    sku_name  = "Basic"
+  }
+}

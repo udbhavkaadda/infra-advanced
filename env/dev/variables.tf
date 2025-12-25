@@ -1,22 +1,9 @@
-variable "project" {
-	description = "Project or application name"
-	type        = string
-	default     = "demo-micro"
-}
-
-variable "environment" {
-	description = "Environment name (dev/qa/prod)"
-	type        = string
-	default     = "dev"
-}
-
-variable "location" {
-	description = "Azure region to deploy into"
-	type        = string
-	default     = "eastus"
-}
-
-variable "subscription_id" {
-    description = "Azure Subscription ID"
-    type        = string
-}
+variable "rgs" { type = any }
+variable "networks" { type = any }
+variable "vms" { type = any }
+variable "storage_accounts" { type = any }
+variable "public_ips" { type = any }
+variable "key_vault_id" { type = string }
+variable "key_vaults" { type = any}
+variable "sql_servers"   { type = any }
+variable "sql_databases" { type = any }

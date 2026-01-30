@@ -5,8 +5,8 @@ trigger:
       - *feature
 
 stages:
-  - stage: Validate
-    displayName: 'Validate & Scan'
+  - stage: PreCommit
+    displayName: Pre-Commit / Static Analysis Stage
     jobs:
       - job: LintAndScan
         pool:
@@ -99,11 +99,12 @@ stages:
         steps:
           - task: ManualValidation@0
             inputs:
-              notifyUsers: ''
+              notifyUsers: 'udbhavchauhan97@gmail.com'
               instructions: 'Please review scans, cost and plan. Approve to continue to apply.'
 
   - stage: Apply
     dependsOn: ManualApproval
+    displayName: Deploy / Apply Stage
     jobs:
       - job: TerraformApply
         pool:
@@ -111,12 +112,14 @@ stages:
         steps:
           - download: current
             artifact: tfplan
-
           - script: |
               terraform apply -auto-approve tfplan.binary
+
             displayName: 'Terraform apply'
             env:
               ARM_CLIENT_ID: $(ARM_CLIENT_ID)
               ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
               ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
               ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+ 
